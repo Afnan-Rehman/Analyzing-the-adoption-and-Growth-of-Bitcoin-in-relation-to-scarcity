@@ -1,0 +1,268 @@
+---
+title: "Analysing the adoption and Growth of Bitcoin in relation to scarcity"
+name: "Afnan UR Rehman"
+Student ID: "21324930"
+output: html_notebook
+---
+
+
+*Choosing the CSV File:*
+
+```{r}
+sfdata <- read.csv(choose.files())
+```
+
+```{r}
+install.packages("lmtest")
+
+```
+
+
+```{r}
+library(car)
+library(tseries)
+library(sandwich)# needed to produce heteroskedastic consistent standard errors
+library(lmtest) # needed for Breusch Pagan Test - alternative to White's test
+
+```
+
+
+```{r}
+attach(sfdata)
+```
+
+```{r}
+summary(sfdata)
+```
+
+
+*Ploting a simple relationship between vairables with price as a dependent variable and stockflow and market-cap as independent vairables:*
+
+```{r}
+plot(price ~ stockflow, data = sfdata)
+```
+Converting the values into log in order to remove the inconsistencies:
+
+```{r}
+sfdata$log_price <- log(sfdata$price)
+sfdata$log_stockflow <- log(sfdata$stockflow)
+sfdata$log_active_addresses<-log(sfdata$active_addresses)
+sfdata$log_blocks <- log(sfdata$blocks)
+sfdata$log_market_cap <- log(sfdata$market_cap)
+```
+
+*Ploting after conversion to see the relationship between variables:*
+
+```{r}
+plot(log_price ~ log_stockflow, data = sfdata)
+```
+
+
+```{r}
+plot(log_price ~ log_market_cap, data = sfdata)
+```
+
+
+
+
+*Plotting to test the Hypothesis using SIMPLE LINEAR REGRESSION:*
+
+
+*Fitting the linear regression model to predict the behavior of price and stockflow ratio to test the hypothesis 1:*
+```{r}
+lnmodel<- lm(log_price ~ log_stockflow, data = sfdata)
+summary(lnmodel)
+```
+
+*Plotting the linear regression model 1*
+
+
+```{r}
+plot(log_price ~ log_stockflow, data = sfdata)
+abline(lnmodel, col='red') # fitted values
+```
+
+
+
+
+*Compute the OLS coefficients and their corresponding standard errors*
+
+```{r}
+Intercept <- rep(1, nrow(sfdata))
+# Define the matrix X by joining the intercept term with the independent variable i.e, log_stockflow
+X <- cbind(Intercept, sfdata$log_stockflow)
+# Multiply the transpose of X to itself
+XtX <- t(X) %*% X
+# Compute the inverse of X
+XtX_inv <- solve(XtX)
+# Define the vector Y which denotes the dependent variable - log_price
+Y <- sfdata$log_price
+# Multiply the transpose of X with Y
+XtY <- t(X) %*% Y
+# Compute the estimates
+beta <- XtX_inv %*% XtY
+# Sigma represents the variance of the residuals
+sigma <- var(lnmodel$residuals)
+```
+
+```{r}
+var_beta <- sigma * XtX_inv
+paste("The estimated coefficient is", round(beta[2],4))
+```
+
+
+
+```{r}
+paste("The standard error of the above coefficient is",round(sqrt(var_beta[4]),4))
+```
+```{r}
+paste("The t-statistic for the above coefficient is",round(beta[2]/sqrt(var_beta[4]),4))
+```
+
+```{r}
+confint(lnmodel, "log_stockflow")
+```
+
+*Since Market cap is a function of price calculated as
+Market cap = price x circulating supply,
+market cap is dependent vairable but since it is a funtion of price, it is evident that it will form a perfect linear regression model with very high r-square value which can create model biasness and which in turn could inflate the vairance of coefficients estimates and make the model unstable.* 
+
+*However, we can form a Multiregression model in order to study the relationship between stock_flow, price, active addressess and the market cap and prove a joint hypothesis i.e, what are the other factors along with the scarcity of bitcoin that are affecting the price of bitcoin keeping the price of bitcoin as a dependent variable consistently to maintain a stable model. We might exclude the marketcap from the joint hypothesis in order to maintain the stability of the model*
+
+
+
+```{r}
+Multilnmodel <- lm(log_price ~ log_stockflow + log_active_addresses + log_market_cap , data = sfdata)
+summary(Multilnmodel)
+```
+
+
+```{r}
+hist(Multilnmodel$residuals, breaks = 30, freq = FALSE,
+main = "Histogram of Residuals with Normal Distibution Overlay")
+lines(seq(-1, 0.5, by=.05), dnorm(seq(-1, 0.5, by = .05), mean(Multilnmodel$residuals),
+sd(Multilnmodel$residuals)), col="blue")
+```
+
+```{r}
+qqPlot(Multilnmodel$residuals)
+```
+
+```{r}
+# Jacque-Bera test for assessing Normality 
+# The null hypothesis is that the residuals are normally distributed
+jarque.bera.test(Multilnmodel$residuals)
+```
+
+Test the joint hypothesis that the coefficients of the two variables are all zero
+i.e., H0 : β1 = β2 = β3 = 0
+
+```{r}
+linearHypothesis(Multilnmodel, c("log_stockflow = 0","log_active_addresses = 0","log_market_cap=0"))
+```
+
+
+
+*We can test the model stability and try to improve the model by removing the market cap since market cap in itself is a function of price as discussed before and could be effecting the model predictability*
+
+```{r}
+updatedmultilnmodel <- lm(log_price ~ log_stockflow + log_active_addresses , data = sfdata)
+summary(updatedmultilnmodel)
+```
+```{r}
+hist(updatedmultilnmodel$residuals, breaks = 30, freq = FALSE,
+main = "Histogram of Residuals with Normal Distibution Overlay")
+lines(seq(-1, 0.5, by=.05), dnorm(seq(-1, 0.5, by = .05), mean(updatedmultilnmodel$residuals),
+sd(updatedmultilnmodel$residuals)), col="blue")
+```
+
+```{r}
+qqPlot(updatedmultilnmodel$residuals)
+```
+
+```{r}
+# Jacque-Bera test for assessing Normality 
+# The null hypothesis is that the residuals are normally distributed
+jarque.bera.test(Multilnmodel$residuals)
+```
+Test the joint hypothesis that the coefficients of the two variables are all zero
+i.e., H0 : β1 = β2 = 0
+
+```{r}
+linearHypothesis(updatedmultilnmodel, c("log_stockflow = 0","log_active_addresses = 0"))
+```
+
+```{r}
+mean(sfdata$log_price)
+```
+
+```{r}
+mean(updatedmultilnmodel$fitted.values)
+```
+
+*Plot the fitted values from model 1 against the actual price values*
+
+```{r}
+# Plot of predicted vs actual values
+plot(updatedmultilnmodel$fitted.values, sfdata$log_price,
+     xlim = c(min(updatedmultilnmodel$fitted.values), max(updatedmultilnmodel$fitted.values)),
+     ylim = c(min(sfdata$log_price), max(sfdata$log_price)),
+     xlab = "Predicted log(price)", ylab = "Actual log(price)")
+abline(0, 1, col = "red")
+
+```
+
+*Incorporate higher order terms of the predicted values into the specification* 
+```{r}
+sfdata$fits <- updatedmultilnmodel$fitted.values
+sfdata$fits2 <- (sfdata$fits)^2
+sfdata$fits3 <- (sfdata$fits)^3
+updatedmultilnmodel_d <- lm(log_price ~ log_stockflow + log_active_addresses + fits2 + fits3, data = sfdata)
+summary(updatedmultilnmodel_d)
+```
+
+*regression residuals/errors*
+
+```{r}
+mean(updatedmultilnmodel$residuals)
+```
+
+
+
+```{r}
+plot(updatedmultilnmodel$fitted.values, updatedmultilnmodel$residuals)
+abline(0,0)
+```
+
+*White test:*
+
+```{r}
+sfdata$residuals2 <- (updatedmultilnmodel$residuals)^2  # Correcting the calculation of squared residuals
+Multilnmodel_W <- lm(residuals2 ~ log_stockflow + log_active_addresses + 
+                     I(log_stockflow^2) + I(log_active_addresses^2) + 
+                     log_stockflow * log_active_addresses, data = sfdata)
+summary(Multilnmodel_W)
+
+```
+
+```{r}
+RSQ <- summary(Multilnmodel_W)$r.squared
+tstat <- nobs(updatedmultilnmodel)*RSQ
+
+```
+
+heteroscedasticity
+
+```{r}
+nbetas <- summary(Multilnmodel_W)$df[1]
+# Compute the p value
+pval <- 1 - pchisq(tstat, nbetas-1)
+# An alternative to White's test - The Breusch-Pagan test
+paste("The test statistic for White's test is", round(tstat,2), "with p value",
+round(pval,8))
+
+```
+```{r}
+bptest(updatedmultilnmodel)
+```
+
